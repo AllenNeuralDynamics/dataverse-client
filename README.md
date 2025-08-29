@@ -8,6 +8,30 @@
 ![Python](https://img.shields.io/badge/python->=3.10-blue?logo=python)
 
 ## Usage
+
+- `set DATAVERSE_password=<password>` to set an environment variable with the account password used to access dataverse
+
+```python
+config = DataverseConfig() # instantiating config reads from env vars
+client = DataverseRestClient(config)
+
+entry = client.get_entry(table, entry_id)
+```
+
+## REST API and Queries
+
+URLs are formatted like `https://<ORG_ID>.crm.dynamics.com/api/data/v9.2/<TABLE><QUERY>`
+
+To fetch an entity by its primary key: `https://<ORG_ID>.crm.dynamics.com/api/data/v9.2/<TABLE>({entry_primary_id})`
+To fetch an entity by an alternate key: `https://<ORG_ID>.crm.dynamics.com/api/data/v9.2/<TABLE>({alt_key_name}={entry_primary_id})`
+    - Note: string values must include single quotes: e.g. `(mouse_id='123456')`
+
+To filter and query: 
+- [odata query docs](https://docs.oasis-open.org/odata/odata/v4.0/errata03/os/complete/part1-protocol/odata-v4.0-errata03-os-part1-protocol-complete.html#_The_$filter_System)
+- `https://<ORG_ID>.crm.dynamics.com/api/data/v9.2/<TABLE>?$filter=contains(crb81_mouse_id, 614)`
+- `https://<ORG_ID>.crm.dynamics.com/api/data/v9.2/<TABLE>?$filter=crb81_sex eq 0`
+
+## Repo setup
  - To use this template, click the green `Use this template` button and `Create new repository`.
  - After github initially creates the new repository, please wait an extra minute for the initialization scripts to finish organizing the repo.
  - To enable the automatic semantic version increments: in the repository go to `Settings` and `Collaborators and teams`. Click the green `Add people` button. Add `svc-aindscicomp` as an admin. Modify the file in `.github/workflows/tag_and_publish.yml` and remove the if statement in line 65. The semantic version will now be incremented every time a code is committed into the main branch.
