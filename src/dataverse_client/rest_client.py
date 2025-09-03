@@ -49,7 +49,7 @@ class DataverseConfig(
     @property
     def scope(self) -> str:
         """Scope for the Dataverse API."""
-        return f"{self.env_url}/.default" + " ".join(self.additional_scopes)
+        return f"{self.env_url}/.default " + " ".join(self.additional_scopes)
 
 
 class DataverseRestClient:
