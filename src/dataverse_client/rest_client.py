@@ -27,6 +27,16 @@ class DataverseConfig(
     username: str = "svc_sipe"
     password: SecretStr
 
+    domain: str = "alleninstitute.org"
+
+    @computed_field
+    @property
+    def username_at_domain(self) -> str:
+        """Username with domain for authentication."""
+        if self.username.endswith(f"@{self.domain}"):
+            return self.username
+        return self.username + "@" + self.domain
+
     @computed_field
     @property
     def api_url(self) -> str:
@@ -87,13 +97,8 @@ class DataverseRestClient:
             client_credential=None,
         )
 
-        if not self.config.username.endswith("@alleninstitute.org"):
-            username = self.config.username + "@alleninstitute.org"
-        else:
-            username = self.config.username
-
         token = app.acquire_token_by_username_password(
-            username,
+            self.config.username_at_domain,
             self.config.password.get_secret_value(),
             scopes=[self.config.scope],
         )
