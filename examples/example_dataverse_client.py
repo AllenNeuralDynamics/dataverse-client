@@ -1,8 +1,11 @@
 """Examples for using the Dataverse client"""
 
+import logging
 from random import randint
 
 from dataverse_client import DataverseConfig, DataverseRestClient
+
+logging.basicConfig(level=logging.INFO)
 
 
 def example_using_dataverse_client():

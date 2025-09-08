@@ -1,5 +1,6 @@
 """Client for interacting with the Dataverse API"""
 
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -12,6 +13,8 @@ from pydantic_settings import (
     YamlConfigSettingsSource,
 )
 import requests
+
+logger = logging.getLogger(__name__)
 
 data_directory = Path(
     site_data_dir(
@@ -238,6 +241,11 @@ class DataverseRestClient:
         """
         url = self._construct_url(table, id)
         response = requests.get(url, headers=self.headers)
+        logger.info(
+            f'Dataverse GET: "{url}", status code: {response.status_code}, '
+            f"duration: {response.elapsed.total_seconds()} seconds"
+        )
+
         if not response.status_code == 200:
             raise ValueError(
                 f"Error fetching {table}:"
@@ -258,6 +266,10 @@ class DataverseRestClient:
         """
         url = self._construct_url(table)
         response = requests.post(url, headers=self.headers, json=data)
+        logger.info(
+            f'Dataverse POST: "{url}", status code: {response.status_code}, '
+            f"duration: {response.elapsed.total_seconds()} seconds"
+        )
         if not response.status_code == 200:
             raise ValueError(
                 f"Error adding {table} entry:"
@@ -285,6 +297,10 @@ class DataverseRestClient:
         url = self._construct_url(table, id)
         headers = self.headers | {"Prefer": "return=representation"}
         response = requests.patch(url, headers=headers, json=update_data)
+        logger.info(
+            f'Dataverse PATCH: "{url}", status code: {response.status_code}, '
+            f"duration: {response.elapsed.total_seconds()} seconds"
+        )
         if not response.status_code == 200:
             raise ValueError(
                 f"Error updating {table} entry with id {id}:"
@@ -323,6 +339,10 @@ class DataverseRestClient:
         # Note: Could also provide `count`, but it's not useful for this method as this
         # returns a list of values, and wouldn't include the "@odata.count" property anyway
         response = requests.get(url, headers=self.headers)
+        logger.info(
+            f'Dataverse GET: "{url}", status code: {response.status_code}, '
+            f"duration: {response.elapsed.total_seconds()} seconds"
+        )
         if not response.status_code == 200:
             raise ValueError(
                 f"Error querying {table}:"
