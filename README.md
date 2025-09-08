@@ -9,11 +9,12 @@
 
 ## Usage
 
-- `set DATAVERSE_password=<password>` to set an environment variable with the account password used to access dataverse
+- Save a configuration file to `C:\ProgramData\AllenInstitute\dataverse_client\config.yml` containing `tenant_id`, `client_id`, and `org` strings.
+- `set DATAVERSE_username=<username>` and `set DATAVERSE_password=<password>` to set environment variables with the account credentials used to access dataverse
     - The other config settings can also be set through environment variables prefixed with "DATAVERSE_", e.g. `DATAVERSE_tenant_id`. 
 
 ```python
-config = DataverseConfig() # instantiating config reads from env vars
+config = DataverseConfig() # instantiating config reads from yaml file and env vars
 client = DataverseRestClient(config)
 
 entry = client.get_entry(table, entry_id)

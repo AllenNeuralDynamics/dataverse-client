@@ -1,30 +1,45 @@
 """Client for interacting with the Dataverse API"""
 
+from pathlib import Path
 from typing import Optional
 
 import msal
+from platformdirs import site_data_dir
 from pydantic import SecretStr, computed_field
-from pydantic_settings import BaseSettings
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    YamlConfigSettingsSource,
+)
 import requests
+
+data_directory = Path(
+    site_data_dir(
+        "dataverse_client",
+        "AllenInstitute",
+        ensure_exists=True,
+    )
+)
 
 
 class DataverseConfig(
     BaseSettings,
     validate_default=True,
     env_prefix="DATAVERSE_",
+    yaml_file=data_directory / "config.yml",
 ):
     """
     Configuration settings for the Dataverse client.
     Loads from environment variables prefixed with "DATAVERSE_"
     """
 
-    tenant_id: str = "32669cd6-737f-4b39-8bdd-d6951120d3fc"
-    client_id: str = "df37356e-3316-484a-b732-319b6b4ad464"
-    org: str = "orgc1997c24"
+    tenant_id: str
+    client_id: str
+    org: str
 
     additional_scopes: list[str] = ["offline_access"]
 
-    username: str = "svc_sipe"
+    username: str
     password: SecretStr
 
     domain: str = "alleninstitute.org"
@@ -60,6 +75,24 @@ class DataverseConfig(
     def scope(self) -> str:
         """Scope for the Dataverse API."""
         return f"{self.env_url}/.default " + " ".join(self.additional_scopes)
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """Specify order of settings sources (yaml file, env vars, etc)"""
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+            YamlConfigSettingsSource(settings_cls),
+        )
 
 
 class DataverseRestClient:

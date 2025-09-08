@@ -18,7 +18,8 @@ dynamic = ["version"]
 
 dependencies = [
     "msal>=1.33.0",
-    "pydantic-settings>=2.10.1",
+    "platformdirs>=4.4.0",
+    "pydantic-settings[yaml]>=2.10.1",
     "requests>=2.32.5",
 ]
 
