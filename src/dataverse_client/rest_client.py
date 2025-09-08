@@ -142,36 +142,87 @@ class DataverseRestClient:
                 f"{token.get('error')} : {token.get('error_description')}"
             )
 
+    @staticmethod
+    def _format_queries(
+        filter: Optional[str] = None,
+        order_by: Optional[str | list[str]] = None,
+        top: Optional[int] = None,
+        count: Optional[bool] = None,
+        select: Optional[str | list[str]] = None,
+    ) -> str:
+        """
+        Format query parameters for a Dataverse API request.
+        Args:
+            filter (str, optional): OData filter query.
+            order_by (str or list[str], optional): OData order by clause.
+            top (int, optional): OData top value.
+            count (bool, optional): Include "@odata.count" in the response, counting matches
+            select (str or list[str], optional): OData select clause.
+        Returns:
+            str: Formatted query string.
+        """
+        queries = []
+        if filter:
+            queries.append(f"$filter={filter}")
+        if order_by:
+            if isinstance(order_by, str):
+                order_by = [order_by]
+            queries.append(f"$orderby={','.join(order_by)}")
+        if top is not None:
+            queries.append(f"$top={top}")
+        if count is not None:
+            queries.append(f"$count={str(count).lower()}")
+        if select:
+            if isinstance(select, str):
+                select = [select]
+            queries.append(f"$select={','.join(select)}")
+        return "?" + "&".join(queries) if len(queries) else ""
+
     def _construct_url(
         self,
         table: str,
         entry_id: Optional[str | dict] = None,
-        filters: Optional[str] = None,
+        filter: Optional[str] = None,
+        order_by: Optional[str | list[str]] = None,
+        top: Optional[int] = None,
+        count: Optional[bool] = None,
+        select: Optional[str | list[str]] = None,
     ) -> str:
         """
         Construct the URL for a Dataverse table entry.
         Args:
             table (str): Table name.
             entry_id (str or dict, optional): Entry ID or alternate key.
+            filter (str, optional): OData filter query, e.g. "column eq 'value'".
+            order_by (str or list[str], optional): Column or list of columns to order by
+            top (int, optional): Return the top n results
+            count (bool, optional): Include "@odata.count" in the response, counting matches
+            select (str or list[str], optional): Columns to include in the response
         Returns:
             str: Constructed URL for the entry.
         """
         if entry_id is None:
-            query = ""
+            identifier = ""
         elif isinstance(entry_id, str):
-            query = f"({entry_id})"
+            identifier = f"({entry_id})"
         elif isinstance(entry_id, dict):  # Can query by alternate key
             key = list(entry_id.keys())[0]
             value = list(entry_id.values())[0]
             if isinstance(value, str):
                 # strings in url query must be formatted with single quotes
                 value = f"'{value}'"
-            query = f"({key}={value})"
+            identifier = f"({key}={value})"
 
-        if filters:
-            query += f"?$filter={filters}"
+        queries = self._format_queries(
+            filter=filter,
+            order_by=order_by,
+            top=top,
+            count=count,
+            select=select,
+        )
 
-        url = self.config.api_url + table + query
+        url = self.config.api_url + table + identifier + queries
+
         return url
 
     def get_entry(self, table: str, id: str | dict) -> dict:
@@ -240,3 +291,41 @@ class DataverseRestClient:
                 f" {response.status_code} {response.text}"
             )
         return response.json()
+
+    def query(
+        self,
+        table: str,
+        filter: Optional[str] = None,
+        order_by: Optional[str] = None,
+        top: Optional[int] = None,
+        select: Optional[list[str]] = None,
+    ) -> list[dict]:
+        """
+        Query a Dataverse table for multiple entries based on filters.
+        For details, see https://www.odata.org/getting-started/basic-tutorial/#queryData
+        https://docs.oasis-open.org/odata/odata/v4.0/errata03/os/complete/part1-protocol/odata-v4.0-errata03-os-part1-protocol-complete.html#_The_$filter_System # noqa
+        Args:
+            table (str): Table name.
+            filter (str, optional): OData filter query, e.g. "column eq 'value'".
+            order_by (str or list[str], optional): Column or list of columns to order by
+            top (int, optional): Return the top n results
+            select (str or list[str], optional): Columns to include in the response
+        Returns:
+            dict: Query results from Dataverse.
+        """
+        url = self._construct_url(
+            table,
+            filter=filter,
+            order_by=order_by,
+            top=top,
+            select=select,
+        )
+        # Note: Could also provide `count`, but it's not useful for this method as this
+        # returns a list of values, and wouldn't include the "@odata.count" property anyway
+        response = requests.get(url, headers=self.headers)
+        if not response.status_code == 200:
+            raise ValueError(
+                f"Error querying {table}:"
+                f" {response.status_code} {response.text}"
+            )
+        return response.json().get("value", [])

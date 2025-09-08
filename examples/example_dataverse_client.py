@@ -18,6 +18,15 @@ def example_using_dataverse_client():
     mouse = client.get_entry(mouse_table, mouse_guid)
     print(mouse)
 
+    mice = client.query(
+        mouse_table,
+        filter="crb81_mouse_id ne '614174'",
+        order_by="crb81_mouse_id",
+        top=5,
+        select=["crb81_mouse_id", "crb81_date_of_birth"],
+    )
+    print(mice)
+
     updated_mouse = client.update_entry(
         mouse_table,
         {"crb81_mouse_id": mouse_id},

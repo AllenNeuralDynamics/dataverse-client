@@ -63,16 +63,77 @@ class TestDataverseRestClient(unittest.TestCase):
             {
                 "table": "table",
                 "entry_id": None,
-                "filters": "key eq 'val'",
+                "filter": "key eq 'val'",
                 "expected": "https://api/table?$filter=key eq 'val'",
             },
         ]
         for case in test_cases:
-            with self.subTest(table=case["table"], entry_id=case["entry_id"]):
+            with self.subTest(case["expected"]):
                 result = client._construct_url(
-                    case["table"], case["entry_id"], case.get("filters")
+                    case["table"], case["entry_id"], case.get("filter")
                 )
                 self.assertEqual(result, case["expected"])
+
+    @patch("src.dataverse_client.rest_client.msal.PublicClientApplication")
+    def test_construct_url_queries(self, mock_msal):
+        """Parametrized test for _construct_url using subTest."""
+        mock_app = MagicMock()
+        mock_app.acquire_token_by_username_password.return_value = (
+            self.mock_token
+        )
+        mock_msal.return_value = mock_app
+        client = DataverseRestClient(self.mock_config)
+        client.config = MagicMock()
+        client.config.api_url = "https://api/"
+        table = "table"
+        test_cases = [
+            {
+                "filter": "column eq 'value'",
+                "expected": "https://api/table?$filter=column eq 'value'",
+            },
+            {
+                "order_by": "column",
+                "expected": "https://api/table?$orderby=column",
+            },
+            {
+                "order_by": ["column1", "column2"],
+                "expected": "https://api/table?$orderby=column1,column2",
+            },
+            {
+                "top": 5,
+                "expected": "https://api/table?$top=5",
+            },
+            {
+                "count": True,
+                "expected": "https://api/table?$count=true",
+            },
+            {
+                "count": False,
+                "expected": "https://api/table?$count=false",
+            },
+            {
+                "select": "col1",
+                "expected": "https://api/table?$select=col1",
+            },
+            {
+                "select": ["col1", "col2"],
+                "expected": "https://api/table?$select=col1,col2",
+            },
+            {
+                "filter": "column eq 'value'",
+                "order_by": "column",
+                "top": 10,
+                "count": True,
+                "select": ["col1", "col2"],
+                "expected": "https://api/table?$filter=column eq 'value'"
+                + "&$orderby=column&$top=10&$count=true&$select=col1,col2",
+            },
+        ]
+        for case in test_cases:
+            with self.subTest(case["expected"]):
+                expected = case.pop("expected")
+                result = client._construct_url(table, **case)
+                self.assertEqual(result, expected)
 
     @patch("src.dataverse_client.rest_client.msal.PublicClientApplication")
     def test_acquire_token_success(self, mock_msal):
