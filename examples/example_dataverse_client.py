@@ -28,7 +28,7 @@ def example_using_dataverse_client():
 
 if __name__ == "__main__":
     print(
-        f"Loading configuration from "
+        "Loading configuration from "
         + str(DataverseConfig.model_config["yaml_file"])
     )
     example_using_dataverse_client()
