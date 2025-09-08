@@ -17,7 +17,6 @@ data_directory = Path(
     site_data_dir(
         "dataverse_client",
         "AllenInstitute",
-        ensure_exists=True,
     )
 )
 
