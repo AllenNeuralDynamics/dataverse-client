@@ -13,6 +13,10 @@ def example_using_dataverse_client():
     client = DataverseRestClient()
 
     mouse_table = "crb81_dim_mice_bases"
+
+    # Add mouse (fails if mouse already exists)
+    # mouse = client.add_entry(mouse_table, {"crb81_mouse_id": "614175"})
+    # print(mouse)
     mouse_id = "614174"
     mouse_guid = "fe057d74-8683-f011-b4cb-6045bd03524b"
     mouse = client.get_entry(mouse_table, {"crb81_mouse_id": mouse_id})

@@ -265,8 +265,9 @@ class DataverseRestClient:
             requests.HTTPError: If the entry cannot be added.
         """
         url = self._construct_url(table)
+        headers = self.headers | {"Prefer": "return=representation"}
         response = requests.post(
-            url, headers=self.headers, json=data, timeout=self.config.request_timeout_s
+            url, headers=headers, json=data, timeout=self.config.request_timeout_s
         )
         logger.info(
             f'Dataverse POST: "{url}", status code: {response.status_code}, '
