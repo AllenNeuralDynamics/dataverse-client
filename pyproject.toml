@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dataverse-client"
-description = "Generated from aind-library-template"
+description = "Simple client for interacting with MS Dataverse via REST API"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [
