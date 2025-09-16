@@ -46,6 +46,8 @@ class DataverseConfig(
 
     domain: str = "alleninstitute.org"
 
+    request_timeout_s: float = 60
+
     @computed_field
     @property
     def username_at_domain(self) -> str:
@@ -130,6 +132,7 @@ class DataverseRestClient:
             client_id=self.config.client_id,
             authority=self.config.authority,
             client_credential=None,
+            timeout=self.config.request_timeout_s,
         )
 
         token = app.acquire_token_by_username_password(
@@ -240,7 +243,7 @@ class DataverseRestClient:
             HttpError: If the entry cannot be fetched.
         """
         url = self._construct_url(table, id)
-        response = requests.get(url, headers=self.headers)
+        response = requests.get(url, headers=self.headers, timeout=self.config.request_timeout_s)
         logger.info(
             f'Dataverse GET: "{url}", status code: {response.status_code}, '
             f"duration: {response.elapsed.total_seconds()} seconds"
@@ -260,7 +263,9 @@ class DataverseRestClient:
             HttpError: If the entry cannot be added.
         """
         url = self._construct_url(table)
-        response = requests.post(url, headers=self.headers, json=data)
+        response = requests.post(
+            url, headers=self.headers, json=data, timeout=self.config.request_timeout_s
+        )
         logger.info(
             f'Dataverse POST: "{url}", status code: {response.status_code}, '
             f"duration: {response.elapsed.total_seconds()} seconds"
@@ -287,7 +292,9 @@ class DataverseRestClient:
         """
         url = self._construct_url(table, id)
         headers = self.headers | {"Prefer": "return=representation"}
-        response = requests.patch(url, headers=headers, json=update_data)
+        response = requests.patch(
+            url, headers=headers, json=update_data, timeout=self.config.request_timeout_s
+        )
         logger.info(
             f'Dataverse PATCH: "{url}", status code: {response.status_code}, '
             f"duration: {response.elapsed.total_seconds()} seconds"
@@ -299,9 +306,9 @@ class DataverseRestClient:
         self,
         table: str,
         filter: Optional[str] = None,
-        order_by: Optional[str] = None,
+        order_by: Optional[str | list[str]] = None,
         top: Optional[int] = None,
-        select: Optional[list[str]] = None,
+        select: Optional[str | list[str]] = None,
     ) -> list[dict]:
         """
         Query a Dataverse table for multiple entries based on filters.
@@ -327,7 +334,7 @@ class DataverseRestClient:
         )
         # Note: Could also provide `count`, but it's not useful for this method as this
         # returns a list of values, and wouldn't include the "@odata.count" property anyway
-        response = requests.get(url, headers=self.headers)
+        response = requests.get(url, headers=self.headers, timeout=self.config.request_timeout_s)
         logger.info(
             f'Dataverse GET: "{url}", status code: {response.status_code}, '
             f"duration: {response.elapsed.total_seconds()} seconds"
