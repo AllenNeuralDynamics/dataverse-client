@@ -240,7 +240,7 @@ class DataverseRestClient:
         Returns:
             dict: Entry data as a dictionary.
         Raises:
-            HttpError: If the entry cannot be fetched.
+            requests.HTTPError: If the entry cannot be fetched.
         """
         url = self._construct_url(table, id)
         response = requests.get(url, headers=self.headers, timeout=self.config.request_timeout_s)
@@ -260,7 +260,7 @@ class DataverseRestClient:
         Returns:
             dict: Response data from Dataverse.
         Raises:
-            HttpError: If the entry cannot be added.
+            requests.HTTPError: If the entry cannot be added.
         """
         url = self._construct_url(table)
         response = requests.post(
@@ -288,7 +288,7 @@ class DataverseRestClient:
         Returns:
             dict: Updated entry data from Dataverse.
         Raises:
-            HttpError: If the entry cannot be updated.
+            requests.HTTPError: If the entry cannot be updated.
         """
         url = self._construct_url(table, id)
         headers = self.headers | {"Prefer": "return=representation"}
@@ -323,7 +323,7 @@ class DataverseRestClient:
         Returns:
             dict: Query results from Dataverse.
         Raises:
-            HttpError: If the query fails.
+            requests.HTTPError: If the query fails.
         """
         url = self._construct_url(
             table,
