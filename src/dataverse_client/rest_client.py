@@ -102,14 +102,16 @@ class DataverseConfig(
 class DataverseRestClient:
     """Client for basic CRUD operations on Dataverse entities."""
 
-    def __init__(self, config: DataverseConfig):
+    def __init__(self, config: Optional[DataverseConfig] = None):
         """
         Initialize the DataverseRestClient with configuration.
         Acquires an authentication token and sets up request headers.
         Args:
-            config (DataverseConfig): Config object with credentials and URLs.
+            config (DataverseConfig or None): Config object with credentials and URLs.
+                If not provided, DataverseConfig() is called with no arguments, which
+                will load from a file and environment variables
         """
-        self.config = config
+        self.config = config or DataverseConfig()
         self.token = self._acquire_token()
         self.headers = {
             "Authorization": f"Bearer {self.token['access_token']}",

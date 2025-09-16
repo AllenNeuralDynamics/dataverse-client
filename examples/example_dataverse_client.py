@@ -10,8 +10,7 @@ logging.basicConfig(level=logging.INFO)
 
 def example_using_dataverse_client():
     """Example usage of the DataverseRestClient with mice table"""
-    config = DataverseConfig()
-    client = DataverseRestClient(config)
+    client = DataverseRestClient()
 
     mouse_table = "crb81_dim_mice_bases"
     mouse_id = "614174"
@@ -39,8 +38,5 @@ def example_using_dataverse_client():
 
 
 if __name__ == "__main__":
-    print(
-        "Loading configuration from "
-        + str(DataverseConfig.model_config["yaml_file"])
-    )
+    print("Loading configuration from " + str(DataverseConfig.model_config["yaml_file"]))
     example_using_dataverse_client()
