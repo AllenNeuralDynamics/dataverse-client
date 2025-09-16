@@ -237,7 +237,7 @@ class DataverseRestClient:
         Returns:
             dict: Entry data as a dictionary.
         Raises:
-            ValueError: If the entry cannot be fetched.
+            HttpError: If the entry cannot be fetched.
         """
         url = self._construct_url(table, id)
         response = requests.get(url, headers=self.headers)
@@ -245,12 +245,7 @@ class DataverseRestClient:
             f'Dataverse GET: "{url}", status code: {response.status_code}, '
             f"duration: {response.elapsed.total_seconds()} seconds"
         )
-
-        if not response.status_code == 200:
-            raise ValueError(
-                f"Error fetching {table}:"
-                f" {response.status_code} {response.text}"
-            )
+        response.raise_for_status()
         return response.json()
 
     def add_entry(self, table: str, data: dict) -> dict:
@@ -262,7 +257,7 @@ class DataverseRestClient:
         Returns:
             dict: Response data from Dataverse.
         Raises:
-            ValueError: If the entry cannot be added.
+            HttpError: If the entry cannot be added.
         """
         url = self._construct_url(table)
         response = requests.post(url, headers=self.headers, json=data)
@@ -270,11 +265,7 @@ class DataverseRestClient:
             f'Dataverse POST: "{url}", status code: {response.status_code}, '
             f"duration: {response.elapsed.total_seconds()} seconds"
         )
-        if not response.status_code == 200:
-            raise ValueError(
-                f"Error adding {table} entry:"
-                f" {response.status_code} {response.text}"
-            )
+        response.raise_for_status()
         return response.json()
 
     def update_entry(
@@ -292,7 +283,7 @@ class DataverseRestClient:
         Returns:
             dict: Updated entry data from Dataverse.
         Raises:
-            ValueError: If the entry cannot be updated.
+            HttpError: If the entry cannot be updated.
         """
         url = self._construct_url(table, id)
         headers = self.headers | {"Prefer": "return=representation"}
@@ -301,11 +292,7 @@ class DataverseRestClient:
             f'Dataverse PATCH: "{url}", status code: {response.status_code}, '
             f"duration: {response.elapsed.total_seconds()} seconds"
         )
-        if not response.status_code == 200:
-            raise ValueError(
-                f"Error updating {table} entry with id {id}:"
-                f" {response.status_code} {response.text}"
-            )
+        response.raise_for_status()
         return response.json()
 
     def query(
@@ -328,6 +315,8 @@ class DataverseRestClient:
             select (str or list[str], optional): Columns to include in the response
         Returns:
             dict: Query results from Dataverse.
+        Raises:
+            HttpError: If the query fails.
         """
         url = self._construct_url(
             table,
@@ -343,9 +332,5 @@ class DataverseRestClient:
             f'Dataverse GET: "{url}", status code: {response.status_code}, '
             f"duration: {response.elapsed.total_seconds()} seconds"
         )
-        if not response.status_code == 200:
-            raise ValueError(
-                f"Error querying {table}:"
-                f" {response.status_code} {response.text}"
-            )
+        response.raise_for_status()
         return response.json().get("value", [])
