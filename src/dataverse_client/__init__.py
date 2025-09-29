@@ -1,6 +1,8 @@
 """Init package"""
 
-__version__ = "0.0.0"
+from importlib.metadata import version
+
+__version__ = version("dataverse_client")
 
 from .rest_client import DataverseConfig, DataverseRestClient
 
