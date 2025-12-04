@@ -345,7 +345,7 @@ class DataverseRestClient:
         Query a Dataverse table for multiple entries based on filters.
 
         For details, see https://www.odata.org/getting-started/basic-tutorial/#queryData
-        and https://docs.oasis-open.org/odata/odata/v4.0/errata03/os/complete/part1-protocol/odata-v4.0-errata03-os-part1-protocol-complete.html#_The_$filter_System
+        and https://docs.oasis-open.org/odata/odata/v4.0/errata03/os/complete/part1-protocol/odata-v4.0-errata03-os-part1-protocol-complete.html#_The_$filter_System #noqa
 
         Args:
             table: Table name
