@@ -137,7 +137,8 @@ class TestDataverseRestClient(unittest.TestCase):
         mock_app.acquire_token_by_username_password.return_value = self.mock_token
         mock_msal.return_value = mock_app
         client = DataverseRestClient(self.mock_config)
-        self.assertIn(self.mock_token['access_token'], client.headers['Authorization'])
+        self.assertTrue(client.connected)
+        self.assertIn(self.mock_token["access_token"], client.headers["Authorization"])
 
     @patch("src.dataverse_client.rest_client.msal.PublicClientApplication")
     def test_acquire_token_failure(self, mock_msal):
@@ -147,6 +148,15 @@ class TestDataverseRestClient(unittest.TestCase):
         mock_msal.return_value = mock_app
         with self.assertRaises(ValueError):
             DataverseRestClient(self.mock_config).headers
+
+    @patch("src.dataverse_client.rest_client.msal.PublicClientApplication")
+    def test_connection_failure(self, mock_msal):
+        """Test failed token acquisition"""
+        mock_app = MagicMock()
+        mock_app.acquire_token_by_username_password.return_value = {}
+        mock_msal.return_value = mock_app
+        client = DataverseRestClient(self.mock_config)
+        self.assertFalse(client.connected)
 
     @patch("src.dataverse_client.rest_client.requests.get")
     @patch("src.dataverse_client.rest_client.msal.PublicClientApplication")

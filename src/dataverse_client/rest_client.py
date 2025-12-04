@@ -118,6 +118,15 @@ class DataverseRestClient:
         )
 
     @property
+    def connected(self) -> bool:
+        """Check if the client can acquire an access token."""
+        try:
+            _ = self._get_access_token()
+            return True
+        except ValueError:
+            return False
+
+    @property
     def headers(self) -> dict:
         """Get the headers for Dataverse API requests."""
         return {
