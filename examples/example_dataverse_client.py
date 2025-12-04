@@ -12,11 +12,11 @@ def example_using_dataverse_client():
     """Example usage of the DataverseRestClient with mice table"""
     client = DataverseRestClient()
 
-    mouse_table = "crb81_dim_mice_bases"
+    mouse_table = "aibs_dim_mices"
 
     # Add mouse (fails if mouse already exists)
-    # mouse = client.add_entry(mouse_table, {"crb81_mouse_id": "614175"})
-    # print(mouse)
+    mouse = client.add_entry(mouse_table, {"crb81_mouse_id": "614175"})
+    print(mouse)
     mouse_id = "614174"
     mouse_guid = "fe057d74-8683-f011-b4cb-6045bd03524b"
     mouse = client.get_entry(mouse_table, {"crb81_mouse_id": mouse_id})
@@ -42,5 +42,7 @@ def example_using_dataverse_client():
 
 
 if __name__ == "__main__":
-    print("Loading configuration from " + str(DataverseConfig.model_config["yaml_file"]))
+    print(
+        "Loading configuration from " + str(DataverseConfig.model_config["yaml_file"])
+    )
     example_using_dataverse_client()
