@@ -27,6 +27,7 @@ data_directory = Path(
 class DataverseConfig(
     BaseSettings,
     validate_default=True,
+    extra="ignore",
     env_prefix="DATAVERSE_",
     yaml_file=data_directory / "config.yml",
 ):
@@ -102,19 +103,25 @@ class DataverseConfig(
 class DataverseRestClient:
     """Client for basic CRUD operations on Dataverse entities."""
 
-    def __init__(self, config: Optional[DataverseConfig] = None):
+    def __init__(self, config: DataverseConfig):
         """
         Initialize the DataverseRestClient with configuration.
-        Acquires an authentication token and sets up request headers.
+
         Args:
-            config (DataverseConfig or None): Config object with credentials and URLs.
-                If not provided, DataverseConfig() is called with no arguments, which
-                will load from a file and environment variables
+            config: Config object with credentials and URLs
         """
-        self.config = config or DataverseConfig()
-        self.token = self._acquire_token()
-        self.headers = {
-            "Authorization": f"Bearer {self.token['access_token']}",
+        self.config = config
+        self._msal_app = msal.PublicClientApplication(
+            client_id=self.config.client_id,
+            authority=self.config.authority,
+            client_credential=None,
+        )
+
+    @property
+    def headers(self) -> dict:
+        """Get the headers for Dataverse API requests."""
+        return {
+            "Authorization": f"Bearer {self._get_access_token()}",
             "OData-MaxVersion": "4.0",
             "OData-Version": "4.0",
             "Accept": "application/json",
@@ -122,32 +129,36 @@ class DataverseRestClient:
             "Content-Type": "application/json",
         }
 
-    def _acquire_token(self):
+    def _get_access_token(self) -> str:
         """
-        Acquire an access token using MSAL and user credentials.
-        Returns:
-            dict: Token dictionary containing 'access_token'.
-        Raises:
-            ValueError: If token acquisition fails.
-        """
-        app = msal.PublicClientApplication(
-            client_id=self.config.client_id,
-            authority=self.config.authority,
-            client_credential=None,
-            timeout=self.config.request_timeout_s,
-        )
+        Get a valid access token.
 
-        token = app.acquire_token_by_username_password(
-            self.config.username_at_domain,
-            self.config.password.get_secret_value(),
+        Returns:
+            str: Valid access token
+
+        Raises:
+            ValueError: If token acquisition fails
+        """
+        accounts = self._msal_app.get_accounts(username=self.config.username_at_domain)
+
+        if accounts:
+            result = self._msal_app.acquire_token_silent(
+                scopes=[self.config.scope], account=accounts[0]
+            )
+            if result and "access_token" in result:
+                return result["access_token"]
+
+        result = self._msal_app.acquire_token_by_username_password(
+            username=self.config.username_at_domain,
+            password=self.config.password.get_secret_value(),
             scopes=[self.config.scope],
         )
-        if "access_token" in token:
-            return token
+
+        if "access_token" in result:
+            return result["access_token"]
         else:
             raise ValueError(
-                f"Error acquiring token: "
-                f"{token.get('error')} : {token.get('error_description')}"
+                f"Error acquiring token: {result.get('error')} : {result.get('error_description')}"
             )
 
     @staticmethod
@@ -160,14 +171,16 @@ class DataverseRestClient:
     ) -> str:
         """
         Format query parameters for a Dataverse API request.
+
         Args:
-            filter (str, optional): OData filter query.
-            order_by (str or list[str], optional): OData order by clause.
-            top (int, optional): OData top value.
-            count (bool, optional): Include "@odata.count" in the response, counting matches
-            select (str or list[str], optional): OData select clause.
+            filter: OData filter query. Defaults to None
+            order_by: OData order by clause. Defaults to None
+            top: OData top value. Defaults to None
+            count: Include "@odata.count" in the response, counting matches. Defaults to None
+            select: OData select clause. Defaults to None
+
         Returns:
-            str: Formatted query string.
+            str: Formatted query string
         """
         queries = []
         if filter:
@@ -198,16 +211,18 @@ class DataverseRestClient:
     ) -> str:
         """
         Construct the URL for a Dataverse table entry.
+
         Args:
-            table (str): Table name.
-            entry_id (str or dict, optional): Entry ID or alternate key.
-            filter (str, optional): OData filter query, e.g. "column eq 'value'".
-            order_by (str or list[str], optional): Column or list of columns to order by
-            top (int, optional): Return the top n results
-            count (bool, optional): Include "@odata.count" in the response, counting matches
-            select (str or list[str], optional): Columns to include in the response
+            table: Table name
+            entry_id: Entry ID or alternate key. Defaults to None
+            filter: OData filter query, e.g. "column eq 'value'". Defaults to None
+            order_by: Column or list of columns to order by. Defaults to None
+            top: Return the top n results. Defaults to None
+            count: Include "@odata.count" in the response, counting matches. Defaults to None
+            select: Columns to include in the response. Defaults to None
+
         Returns:
-            str: Constructed URL for the entry.
+            str: Constructed URL for the entry
         """
         if entry_id is None:
             identifier = ""
@@ -220,6 +235,8 @@ class DataverseRestClient:
                 # strings in url query must be formatted with single quotes
                 value = f"'{value}'"
             identifier = f"({key}={value})"
+        else:
+            raise ValueError("entry_id must be a string or dictionary")
 
         queries = self._format_queries(
             filter=filter,
@@ -236,45 +253,53 @@ class DataverseRestClient:
     def get_entry(self, table: str, id: str | dict) -> dict:
         """
         Get a Dataverse entry by ID or alternate key.
+
         Args:
-            table (str): Table name.
-            id (str or dict): Entry ID or alternate key.
+            table: Table name
+            id: Entry ID or alternate key
+
         Returns:
-            dict: Entry data as a dictionary.
+            dict: Entry data as a dictionary
+
         Raises:
-            requests.HTTPError: If the entry cannot be fetched.
+            ValueError: If the entry cannot be fetched
         """
         url = self._construct_url(table, id)
         response = requests.get(url, headers=self.headers, timeout=self.config.request_timeout_s)
-        logger.info(
+        logger.debug(
             f'Dataverse GET: "{url}", status code: {response.status_code}, '
             f"duration: {response.elapsed.total_seconds()} seconds"
         )
         response.raise_for_status()
         return response.json()
 
-    def add_entry(self, table: str, data: dict) -> dict:
+    def add_entry(self, table: str, data: dict) -> Optional[dict]:
         """
         Add a new entry to a Dataverse table.
+
         Args:
-            table (str): Table name.
-            data (dict): Entry data to add.
+            table: Table name
+            data: Entry data to add
+
         Returns:
-            dict: Response data from Dataverse.
+            Optional[dict]: Response data from Dataverse
+
         Raises:
-            requests.HTTPError: If the entry cannot be added.
+            ValueError: If the entry cannot be added
         """
         url = self._construct_url(table)
-        headers = self.headers | {"Prefer": "return=representation"}
         response = requests.post(
-            url, headers=headers, json=data, timeout=self.config.request_timeout_s
+            url, headers=self.headers, json=data, timeout=self.config.request_timeout_s
         )
-        logger.info(
+        logger.debug(
             f'Dataverse POST: "{url}", status code: {response.status_code}, '
             f"duration: {response.elapsed.total_seconds()} seconds"
         )
         response.raise_for_status()
-        return response.json()
+        if response.status_code == 204:
+            return None
+        else:
+            return response.json()
 
     def update_entry(
         self,
@@ -284,21 +309,24 @@ class DataverseRestClient:
     ) -> dict:
         """
         Update an existing entry in a Dataverse table.
+
         Args:
-            table (str): Table name.
-            id (str or dict): Entry ID or alternate key.
-            update_data (dict): Data to update.
+            table: Table name
+            id: Entry ID or alternate key
+            update_data: Data to update
+
         Returns:
-            dict: Updated entry data from Dataverse.
+            dict: Updated entry data from Dataverse
+
         Raises:
-            requests.HTTPError: If the entry cannot be updated.
+            ValueError: If the entry cannot be updated
         """
         url = self._construct_url(table, id)
         headers = self.headers | {"Prefer": "return=representation"}
         response = requests.patch(
             url, headers=headers, json=update_data, timeout=self.config.request_timeout_s
         )
-        logger.info(
+        logger.debug(
             f'Dataverse PATCH: "{url}", status code: {response.status_code}, '
             f"duration: {response.elapsed.total_seconds()} seconds"
         )
@@ -309,24 +337,25 @@ class DataverseRestClient:
         self,
         table: str,
         filter: Optional[str] = None,
-        order_by: Optional[str | list[str]] = None,
+        order_by: Optional[str] = None,
         top: Optional[int] = None,
-        select: Optional[str | list[str]] = None,
+        select: Optional[list[str]] = None,
     ) -> list[dict]:
         """
         Query a Dataverse table for multiple entries based on filters.
+
         For details, see https://www.odata.org/getting-started/basic-tutorial/#queryData
-        https://docs.oasis-open.org/odata/odata/v4.0/errata03/os/complete/part1-protocol/odata-v4.0-errata03-os-part1-protocol-complete.html#_The_$filter_System # noqa
+        and https://docs.oasis-open.org/odata/odata/v4.0/errata03/os/complete/part1-protocol/odata-v4.0-errata03-os-part1-protocol-complete.html#_The_$filter_System
+
         Args:
-            table (str): Table name.
-            filter (str, optional): OData filter query, e.g. "column eq 'value'".
-            order_by (str or list[str], optional): Column or list of columns to order by
-            top (int, optional): Return the top n results
-            select (str or list[str], optional): Columns to include in the response
+            table: Table name
+            filter: OData filter query, e.g. "column eq 'value'". Defaults to None
+            order_by: Column or list of columns to order by. Defaults to None
+            top: Return the top n results. Defaults to None
+            select: Columns to include in the response. Defaults to None
+
         Returns:
-            dict: Query results from Dataverse.
-        Raises:
-            requests.HTTPError: If the query fails.
+            list[dict]: Query results from Dataverse
         """
         url = self._construct_url(
             table,
@@ -337,8 +366,12 @@ class DataverseRestClient:
         )
         # Note: Could also provide `count`, but it's not useful for this method as this
         # returns a list of values, and wouldn't include the "@odata.count" property anyway
-        response = requests.get(url, headers=self.headers, timeout=self.config.request_timeout_s)
-        logger.info(
+        response = requests.get(
+            url,
+            headers=self.headers | {"Prefer": "return=representation"},
+            timeout=self.config.request_timeout_s,
+        )
+        logger.debug(
             f'Dataverse GET: "{url}", status code: {response.status_code}, '
             f"duration: {response.elapsed.total_seconds()} seconds"
         )
