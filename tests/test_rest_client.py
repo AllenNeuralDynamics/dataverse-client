@@ -123,6 +123,14 @@ class TestDataverseRestClient(unittest.TestCase):
                 "expected": "https://api/table?$filter=column eq 'value'"
                 + "&$orderby=column&$top=10&$count=true&$select=col1,col2",
             },
+            {
+                "expand": "related_entity",
+                "expected": "https://api/table?$expand=related_entity",
+            },
+            {
+                "expand": ["related_entity", "another_entity"],
+                "expected": "https://api/table?$expand=related_entity,another_entity",
+            },
         ]
         for case in test_cases:
             with self.subTest(case["expected"]):

@@ -177,6 +177,7 @@ class DataverseRestClient:
         top: Optional[int] = None,
         count: Optional[bool] = None,
         select: Optional[str | list[str]] = None,
+        expand: Optional[str | list[str]] = None,
     ) -> str:
         """
         Format query parameters for a Dataverse API request.
@@ -187,6 +188,7 @@ class DataverseRestClient:
             top: OData top value. Defaults to None
             count: Include "@odata.count" in the response, counting matches. Defaults to None
             select: OData select clause. Defaults to None
+            expand: OData expand clause. Defaults to None
 
         Returns:
             str: Formatted query string
@@ -206,6 +208,10 @@ class DataverseRestClient:
             if isinstance(select, str):
                 select = [select]
             queries.append(f"$select={','.join(select)}")
+        if expand:
+            if isinstance(expand, str):
+                expand = [expand]
+            queries.append(f"$expand={','.join(expand)}")
         return "?" + "&".join(queries) if len(queries) else ""
 
     def _construct_url(
@@ -217,6 +223,7 @@ class DataverseRestClient:
         top: Optional[int] = None,
         count: Optional[bool] = None,
         select: Optional[str | list[str]] = None,
+        expand: Optional[str | list[str]] = None,
     ) -> str:
         """
         Construct the URL for a Dataverse table entry.
@@ -229,7 +236,7 @@ class DataverseRestClient:
             top: Return the top n results. Defaults to None
             count: Include "@odata.count" in the response, counting matches. Defaults to None
             select: Columns to include in the response. Defaults to None
-
+            expand: Related entities to include in the response. Defaults to None
         Returns:
             str: Constructed URL for the entry
         """
@@ -253,6 +260,7 @@ class DataverseRestClient:
             top=top,
             count=count,
             select=select,
+            expand=expand,
         )
 
         url = self.config.api_url + table + identifier + queries
@@ -349,6 +357,7 @@ class DataverseRestClient:
         order_by: Optional[str] = None,
         top: Optional[int] = None,
         select: Optional[list[str]] = None,
+        expand: Optional[str | list[str]] = None,
     ) -> list[dict]:
         """
         Query a Dataverse table for multiple entries based on filters.
@@ -362,7 +371,7 @@ class DataverseRestClient:
             order_by: Column or list of columns to order by. Defaults to None
             top: Return the top n results. Defaults to None
             select: Columns to include in the response. Defaults to None
-
+            expand: Related entities to include in the response. Defaults to None
         Returns:
             list[dict]: Query results from Dataverse
         """
@@ -372,6 +381,7 @@ class DataverseRestClient:
             order_by=order_by,
             top=top,
             select=select,
+            expand=expand,
         )
         # Note: Could also provide `count`, but it's not useful for this method as this
         # returns a list of values, and wouldn't include the "@odata.count" property anyway
