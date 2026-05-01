@@ -3,10 +3,11 @@
 import logging
 from pathlib import Path
 from typing import Optional
+import json
 
 import msal
 from platformdirs import site_data_dir
-from pydantic import SecretStr, computed_field
+from pydantic import BaseModel, SecretStr, computed_field
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -100,6 +101,24 @@ class DataverseConfig(
         )
 
 
+#### Simple models for database table metadata
+
+
+class ColumnMetadata(BaseModel):
+    MetadataId: str
+    LogicalName: str
+    AttributeType: str
+
+
+class TableMetadata(BaseModel):
+    SchemaName: str
+    LogicalCollectionName: str
+    Attributes: Optional[list[ColumnMetadata]] = None
+
+
+####
+
+
 class DataverseRestClient:
     """Client for basic CRUD operations on Dataverse entities."""
 
@@ -136,6 +155,7 @@ class DataverseRestClient:
             "Accept": "application/json",
             "If-None-Match": None,
             "Content-Type": "application/json",
+            "Prefer": 'odata.include-annotations="OData.Community.Display.V1.FormattedValue",return=representation',
         }
 
     def _get_access_token(self) -> str:
@@ -387,7 +407,7 @@ class DataverseRestClient:
         # returns a list of values, and wouldn't include the "@odata.count" property anyway
         response = requests.get(
             url,
-            headers=self.headers | {"Prefer": "return=representation"},
+            headers=self.headers,  # | {"Prefer": "return=representation"},
             timeout=self.config.request_timeout_s,
         )
         logger.debug(
@@ -396,3 +416,85 @@ class DataverseRestClient:
         )
         response.raise_for_status()
         return response.json().get("value", [])
+
+    def list_table_names(self, filter_by_prefix: str = "") -> list[TableMetadata]:
+        """List all table names in the Dataverse environment, optionally filtering by prefix.
+        For each table, return the logical name and the display name (schema name)
+
+        Args:
+            filter_by_prefix: If provided, only return tables whose logical name starts with this prefix.
+        Returns:
+            list[TableMetadata]: List of table metadata objects with no column information
+        """
+        data = self.query("EntityDefinitions", select=["SchemaName", "LogicalCollectionName"])
+        tables = [TableMetadata(**t) for t in data if t["LogicalCollectionName"] is not None]
+        if filter_by_prefix:
+            tables = [t for t in tables if t.LogicalCollectionName.startswith(filter_by_prefix)]
+        return tables
+
+    def table_info(
+        self,
+        table_name: str | TableMetadata,
+        column_filter_prefix: str = "",
+    ) -> TableMetadata:
+        """Get metadata for a Dataverse table, including column names and types.
+
+        Args:
+            table_name: The logical name of the table or a TableMetadata object.
+            column_filter_prefix: If provided, only include columns whose logical name starts with this prefix.
+        Returns:
+            TableMetadata: Metadata for the specified table, including column information
+        """
+        if isinstance(table_name, TableMetadata):
+            table_name = table_name.LogicalCollectionName
+        data = self.query(
+            "EntityDefinitions",
+            filter=f"LogicalCollectionName eq '{table_name}'",
+            select=["SchemaName", "LogicalCollectionName"],
+            expand="Attributes($select=LogicalName,AttributeType)",
+        )[0]
+        table = TableMetadata(**data)
+        if column_filter_prefix:
+            table.Attributes = [
+                a for a in table.Attributes or [] if a.LogicalName.startswith(column_filter_prefix)
+            ]
+        return table
+
+    def list_table_info(
+        self,
+        table_filter_prefix: str = "",
+        column_filter_prefix: str = "",
+        output_file: Optional[Path] = None,
+    ) -> list[TableMetadata]:
+        """Get table metadata for all tables, optionally filtering table logical name by prefix.
+        Microsoft doesn't let you filter metadata by "starts_with(...)" so we have to filter on our own.
+
+        Args:
+            table_filter_prefix: If provided, only include tables whose logical name starts with this prefix.
+            column_filter_prefix: If provided, only include columns whose logical name starts with this prefix.
+            output_file: If provided, write the metadata to this file in JSON format.
+        Returns:
+            list[TableMetadata]: List of table metadata objects, including column information
+        """
+        all_tables = self.query(
+            "EntityDefinitions",
+            select=["SchemaName", "LogicalCollectionName"],
+            expand="Attributes($select=LogicalName,AttributeType)",
+        )
+        if table_filter_prefix:
+            tables_of_interest = [
+                TableMetadata(**t)
+                for t in all_tables
+                if t["LogicalCollectionName"] is not None
+                and t["LogicalCollectionName"].startswith(table_filter_prefix)
+            ]
+        if column_filter_prefix:
+            for t in tables_of_interest:
+                t.Attributes = [
+                    a for a in t.Attributes or [] if a.LogicalName.startswith(column_filter_prefix)
+                ]
+        if output_file:
+            Path(output_file).parent.mkdir(exist_ok=True, parents=True)
+            with open(output_file, "w") as f:
+                json.dump([t.model_dump() for t in tables_of_interest], f, indent=2)
+        return tables_of_interest
