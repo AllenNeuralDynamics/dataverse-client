@@ -1,4 +1,4 @@
-from pprint import pprint
+from devtools import pprint
 
 from dataverse_client import DataverseConfig, DataverseRestClient
 from dataverse_models import models
@@ -19,7 +19,7 @@ def check_one_table(client: DataverseRestClient, table: str):
     print(f"###########     Raw data for table {table}:      ###########")
     pprint(raw_data[0])
     print(f"###########     Model data for table {table}:      ###########")
-    pprint(data[0].model_dump())
+    pprint(data[0])
 
 
 if __name__ == "__main__":
