@@ -407,7 +407,7 @@ class DataverseRestClient:
         # returns a list of values, and wouldn't include the "@odata.count" property anyway
         response = requests.get(
             url,
-            headers=self.headers,  # | {"Prefer": "return=representation"},
+            headers=self.headers,
             timeout=self.config.request_timeout_s,
         )
         logger.debug(
@@ -428,8 +428,7 @@ class DataverseRestClient:
         """
         data = self.query("EntityDefinitions", select=["SchemaName", "LogicalCollectionName"])
         tables = [TableMetadata(**t) for t in data if t["LogicalCollectionName"] is not None]
-        if filter_by_prefix:
-            tables = [t for t in tables if t.LogicalCollectionName.startswith(filter_by_prefix)]
+        tables = [t for t in tables if t.LogicalCollectionName.startswith(filter_by_prefix)]
         return tables
 
     def table_info(
@@ -454,10 +453,11 @@ class DataverseRestClient:
             expand="Attributes($select=LogicalName,AttributeType)",
         )[0]
         table = TableMetadata(**data)
-        if column_filter_prefix:
-            table.Attributes = [
-                a for a in table.Attributes or [] if a.LogicalName.startswith(column_filter_prefix)
-            ]
+        if table.Attributes is None:  # Ensure Attributes is the right type
+            table.Attributes = []
+        table.Attributes = [
+            a for a in table.Attributes if a.LogicalName.startswith(column_filter_prefix)
+        ]
         return table
 
     def list_table_info(
@@ -481,18 +481,18 @@ class DataverseRestClient:
             select=["SchemaName", "LogicalCollectionName"],
             expand="Attributes($select=LogicalName,AttributeType)",
         )
-        if table_filter_prefix:
-            tables_of_interest = [
-                TableMetadata(**t)
-                for t in all_tables
-                if t["LogicalCollectionName"] is not None
-                and t["LogicalCollectionName"].startswith(table_filter_prefix)
+        tables_of_interest = [
+            TableMetadata(**t)
+            for t in all_tables
+            if t["LogicalCollectionName"] is not None
+            and t["LogicalCollectionName"].startswith(table_filter_prefix)
+        ]
+        for t in tables_of_interest:
+            if t.Attributes is None:
+                t.Attributes = []
+            t.Attributes = [
+                a for a in t.Attributes if a.LogicalName.startswith(column_filter_prefix)
             ]
-        if column_filter_prefix:
-            for t in tables_of_interest:
-                t.Attributes = [
-                    a for a in t.Attributes or [] if a.LogicalName.startswith(column_filter_prefix)
-                ]
         if output_file:
             Path(output_file).parent.mkdir(exist_ok=True, parents=True)
             with open(output_file, "w") as f:
