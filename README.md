@@ -48,7 +48,7 @@ client = DataverseRestClient() # configuration is automatically loaded
 entry = client.get_entry(table, entry_id)
 ```
 
-The client provides the following methods:
+The client provides the following methods for basic database interaction:
 ```python
 add_entry(table: str, data: dict) -> dict ...
 
@@ -62,7 +62,19 @@ query(
   order_by: Optional[str | list[str]] = None, # Column or list of columns to order by
   top: Optional[int] = None, # Return the top n results
   select: Optional[str | list[str]] = None # Columns to include in the response
+  expand: Optional[str | list[str]] = None # Related entities to include in the response.
 ) -> list[dict]: ...
+```
+
+There are also these methods for inspecting database table definitions:
+```python
+list_table_names(filter_by_prefix: str = "") -> list[TableMetadata] # lists all table names in the database
+table_info(table_name: str | TableMetadata, column_filter_prefix: str = "") -> TableMetadata # Get full definition including columns
+list_table_info(
+  table_filter_prefix: str = "",
+  column_filter_prefix: str = "",
+  output_file: Optional[Path] = None,
+) -> list[TableMetadata]: # Get full definitions of many tables
 ```
 
 ## REST API and Queries
