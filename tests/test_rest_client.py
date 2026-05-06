@@ -1,216 +1,255 @@
 """Unit tests for the DataverseRestClient"""
 
-import unittest
-from unittest.mock import patch, MagicMock
-from dataverse_client import (
-    DataverseRestClient,
-    DataverseConfig,
+import logging
+from unittest.mock import MagicMock
+
+import pytest
+
+from dataverse_client import DataverseConfig, DataverseRestClient
+
+MOCK_TOKEN = {"access_token": "fake-token"}
+
+
+@pytest.fixture
+def mock_config():
+    config = MagicMock(spec=DataverseConfig)
+    config.client_id = "client_id"
+    config.authority = "authority"
+    config.username = "user"
+    config.password = MagicMock()
+    config.password.get_secret_value.return_value = "pass"
+    config.scope = "scope"
+    config.api_url = "https://api/"
+    config.request_timeout_s = 60
+    return config
+
+
+@pytest.fixture
+def client(mock_config, mocker):
+    mock_app = MagicMock()
+    mock_app.acquire_token_by_username_password.return_value = MOCK_TOKEN
+    mocker.patch(
+        "src.dataverse_client.rest_client.msal.PublicClientApplication", return_value=mock_app
+    )
+    return DataverseRestClient(mock_config)
+
+
+@pytest.fixture
+def failed_auth_client(mock_config, mocker):
+    mock_app = MagicMock()
+    mock_app.acquire_token_by_username_password.return_value = {}
+    mock_app.get_accounts.return_value = []
+    mocker.patch(
+        "src.dataverse_client.rest_client.msal.PublicClientApplication", return_value=mock_app
+    )
+    return DataverseRestClient(mock_config)
+
+
+# --- _construct_url ---
+
+
+@pytest.mark.parametrize(
+    "entry_id, filter, expected",
+    [
+        pytest.param(None, None, "https://api/table", id="no_id"),
+        pytest.param("123", None, "https://api/table(123)", id="string_id"),
+        pytest.param({"key": "val"}, None, "https://api/table(key='val')", id="dict_str_value"),
+        pytest.param({"num": 42}, None, "https://api/table(num=42)", id="dict_int_value"),
+        pytest.param(
+            {"key": "val", "key2": "val2"},
+            None,
+            "https://api/table(key='val')",
+            id="dict_first_key_only",
+        ),
+        pytest.param(
+            None, "key eq 'val'", "https://api/table?$filter=key eq 'val'", id="filter_only"
+        ),
+    ],
 )
+def test_construct_url(client, entry_id, filter, expected):
+    assert client._construct_url("table", entry_id, filter) == expected
 
 
-class TestDataverseRestClient(unittest.TestCase):
-    """Unit tests for the DataverseRestClient"""
-
-    def setUp(self):
-        """Set up mocks"""
-        self.mock_token = {"access_token": "fake-token"}
-        self.mock_config = MagicMock(spec=DataverseConfig)
-        self.mock_config.client_id = "client_id"
-        self.mock_config.authority = "authority"
-        self.mock_config.username = "user"
-        self.mock_config.password = MagicMock()
-        self.mock_config.password.get_secret_value.return_value = "pass"
-        self.mock_config.scope = "scope"
-        self.mock_config.api_url = "https://api/"
-        self.mock_config.request_timeout_s = 60
-
-    @patch("src.dataverse_client.rest_client.msal.PublicClientApplication")
-    def test_construct_url_parametrized(self, mock_msal):
-        """Parametrized test for _construct_url using subTest."""
-        mock_app = MagicMock()
-        mock_app.acquire_token_by_username_password.return_value = self.mock_token
-        mock_msal.return_value = mock_app
-        client = DataverseRestClient(self.mock_config)
-        client.config = MagicMock()
-        client.config.api_url = "https://api/"
-        test_cases = [
-            {
-                "table": "table",
-                "entry_id": None,
-                "expected": "https://api/table",
-            },
-            {
-                "table": "table",
-                "entry_id": "123",
-                "expected": "https://api/table(123)",
-            },
-            {
-                "table": "table",
-                "entry_id": {"key": "val"},
-                "expected": "https://api/table(key='val')",
-            },
-            {
-                "table": "table",
-                "entry_id": {"num": 42},
-                "expected": "https://api/table(num=42)",
-            },
-            {
-                "table": "table",
-                "entry_id": {"key": "val", "key2": "val2"},
-                "expected": "https://api/table(key='val')",  # only one key
-            },
-            {
-                "table": "table",
-                "entry_id": None,
-                "filter": "key eq 'val'",
-                "expected": "https://api/table?$filter=key eq 'val'",
-            },
-        ]
-        for case in test_cases:
-            with self.subTest(case["expected"]):
-                result = client._construct_url(case["table"], case["entry_id"], case.get("filter"))
-                self.assertEqual(result, case["expected"])
-
-    @patch("src.dataverse_client.rest_client.msal.PublicClientApplication")
-    def test_construct_url_queries(self, mock_msal):
-        """Parametrized test for _construct_url using subTest."""
-        mock_app = MagicMock()
-        mock_app.acquire_token_by_username_password.return_value = self.mock_token
-        mock_msal.return_value = mock_app
-        client = DataverseRestClient(self.mock_config)
-        client.config = MagicMock()
-        client.config.api_url = "https://api/"
-        table = "table"
-        test_cases = [
-            {
-                "filter": "column eq 'value'",
-                "expected": "https://api/table?$filter=column eq 'value'",
-            },
-            {
-                "order_by": "column",
-                "expected": "https://api/table?$orderby=column",
-            },
-            {
-                "order_by": ["column1", "column2"],
-                "expected": "https://api/table?$orderby=column1,column2",
-            },
-            {
-                "top": 5,
-                "expected": "https://api/table?$top=5",
-            },
-            {
-                "count": True,
-                "expected": "https://api/table?$count=true",
-            },
-            {
-                "count": False,
-                "expected": "https://api/table?$count=false",
-            },
-            {
-                "select": "col1",
-                "expected": "https://api/table?$select=col1",
-            },
-            {
-                "select": ["col1", "col2"],
-                "expected": "https://api/table?$select=col1,col2",
-            },
+@pytest.mark.parametrize(
+    "kwargs, expected",
+    [
+        pytest.param(
+            {"filter": "column eq 'value'"},
+            "https://api/table?$filter=column eq 'value'",
+            id="filter",
+        ),
+        pytest.param(
+            {"order_by": "column"}, "https://api/table?$orderby=column", id="order_by_str"
+        ),
+        pytest.param(
+            {"order_by": ["column1", "column2"]},
+            "https://api/table?$orderby=column1,column2",
+            id="order_by_list",
+        ),
+        pytest.param({"top": 5}, "https://api/table?$top=5", id="top"),
+        pytest.param({"count": True}, "https://api/table?$count=true", id="count_true"),
+        pytest.param({"count": False}, "https://api/table?$count=false", id="count_false"),
+        pytest.param({"select": "col1"}, "https://api/table?$select=col1", id="select_str"),
+        pytest.param(
+            {"select": ["col1", "col2"]}, "https://api/table?$select=col1,col2", id="select_list"
+        ),
+        pytest.param(
+            {"expand": "related_entity"},
+            "https://api/table?$expand=related_entity",
+            id="expand_str",
+        ),
+        pytest.param(
+            {"expand": ["related_entity", "another_entity"]},
+            "https://api/table?$expand=related_entity,another_entity",
+            id="expand_list",
+        ),
+        pytest.param(
             {
                 "filter": "column eq 'value'",
                 "order_by": "column",
                 "top": 10,
                 "count": True,
                 "select": ["col1", "col2"],
-                "expected": "https://api/table?$filter=column eq 'value'"
-                + "&$orderby=column&$top=10&$count=true&$select=col1,col2",
             },
-            {
-                "expand": "related_entity",
-                "expected": "https://api/table?$expand=related_entity",
-            },
-            {
-                "expand": ["related_entity", "another_entity"],
-                "expected": "https://api/table?$expand=related_entity,another_entity",
-            },
-        ]
-        for case in test_cases:
-            with self.subTest(case["expected"]):
-                expected = case.pop("expected")
-                result = client._construct_url(table, **case)
-                self.assertEqual(result, expected)
-
-    @patch("src.dataverse_client.rest_client.msal.PublicClientApplication")
-    def test_acquire_token_success(self, mock_msal):
-        """Test successful token acquisition"""
-        mock_app = MagicMock()
-        mock_app.acquire_token_by_username_password.return_value = self.mock_token
-        mock_msal.return_value = mock_app
-        client = DataverseRestClient(self.mock_config)
-        self.assertTrue(client.connected)
-        self.assertIn(self.mock_token["access_token"], client.headers["Authorization"])
-
-    @patch("src.dataverse_client.rest_client.msal.PublicClientApplication")
-    def test_acquire_token_failure(self, mock_msal):
-        """Test failed token acquisition"""
-        mock_app = MagicMock()
-        mock_app.acquire_token_by_username_password.return_value = {}
-        mock_msal.return_value = mock_app
-        with self.assertRaises(ValueError):
-            DataverseRestClient(self.mock_config).headers
-
-    @patch("src.dataverse_client.rest_client.msal.PublicClientApplication")
-    def test_connection_failure(self, mock_msal):
-        """Test failed token acquisition"""
-        mock_app = MagicMock()
-        mock_app.acquire_token_by_username_password.return_value = {}
-        mock_msal.return_value = mock_app
-        client = DataverseRestClient(self.mock_config)
-        self.assertFalse(client.connected)
-
-    @patch("src.dataverse_client.rest_client.requests.get")
-    @patch("src.dataverse_client.rest_client.msal.PublicClientApplication")
-    def test_get_entry_success(self, mock_msal, mock_get):
-        """Test successful retrieval of a Dataverse entry"""
-        mock_app = MagicMock()
-        mock_app.acquire_token_by_username_password.return_value = self.mock_token
-        mock_msal.return_value = mock_app
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"result": "ok"}
-        mock_get.return_value = mock_response
-        client = DataverseRestClient(self.mock_config)
-        result = client.get_entry("table", "id")
-        self.assertEqual(result, {"result": "ok"})
-
-    @patch("src.dataverse_client.rest_client.requests.post")
-    @patch("src.dataverse_client.rest_client.msal.PublicClientApplication")
-    def test_add_entry_success(self, mock_msal, mock_post):
-        """Test successful addition of a Dataverse entry"""
-        mock_app = MagicMock()
-        mock_app.acquire_token_by_username_password.return_value = self.mock_token
-        mock_msal.return_value = mock_app
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"added": True}
-        mock_post.return_value = mock_response
-        client = DataverseRestClient(self.mock_config)
-        result = client.add_entry("table", {"data": 1})
-        self.assertEqual(result, {"added": True})
-
-    @patch("src.dataverse_client.rest_client.requests.patch")
-    @patch("src.dataverse_client.rest_client.msal.PublicClientApplication")
-    def test_update_entry_success(self, mock_msal, mock_patch):
-        """Test successful update of a Dataverse entry"""
-        mock_app = MagicMock()
-        mock_app.acquire_token_by_username_password.return_value = self.mock_token
-        mock_msal.return_value = mock_app
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"updated": True}
-        mock_patch.return_value = mock_response
-        client = DataverseRestClient(self.mock_config)
-        result = client.update_entry("table", "id", {"update": 1})
-        self.assertEqual(result, {"updated": True})
+            "https://api/table?$filter=column eq 'value'&$orderby=column&$top=10&$count=true&$select=col1,col2",
+            id="combined",
+        ),
+    ],
+)
+def test_construct_url_queries(client, kwargs, expected):
+    assert client._construct_url("table", **kwargs) == expected
 
 
-if __name__ == "__main__":
-    unittest.main()
+# --- auth ---
+
+
+def test_acquire_token_success(client):
+    assert client.connected
+    assert MOCK_TOKEN["access_token"] in client.headers["Authorization"]
+
+
+def test_acquire_token_failure(failed_auth_client):
+    with pytest.raises(ValueError):
+        _ = failed_auth_client.headers
+
+
+def test_connection_failure(failed_auth_client):
+    assert not failed_auth_client.connected
+
+
+# --- CRUD ---
+
+
+def test_get_entry_success(client, mocker):
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"result": "ok"}
+    mocker.patch("src.dataverse_client.rest_client.requests.get", return_value=mock_response)
+    assert client.get_entry("table", "id") == {"result": "ok"}
+
+
+def test_add_entry_success(client, mocker):
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"added": True}
+    mocker.patch("src.dataverse_client.rest_client.requests.post", return_value=mock_response)
+    assert client.add_entry("table", {"data": 1}) == {"added": True}
+
+
+def test_update_entry_success(client, mocker):
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"updated": True}
+    mocker.patch("src.dataverse_client.rest_client.requests.patch", return_value=mock_response)
+    assert client.update_entry("table", "id", {"update": 1}) == {"updated": True}
+
+
+# --- query ---
+
+
+def test_query_returns_value_list(client, mocker):
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"value": [{"id": 1}, {"id": 2}]}
+    mocker.patch("src.dataverse_client.rest_client.requests.get", return_value=mock_response)
+    assert client.query("table") == [{"id": 1}, {"id": 2}]
+
+
+def test_query_empty_value(client, mocker):
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"value": []}
+    mocker.patch("src.dataverse_client.rest_client.requests.get", return_value=mock_response)
+    assert client.query("table") == []
+
+
+def test_query_missing_value_key(client, mocker):
+    """query returns [] when the response has no 'value' key"""
+    mock_response = MagicMock()
+    mock_response.json.return_value = {}
+    mocker.patch("src.dataverse_client.rest_client.requests.get", return_value=mock_response)
+    assert client.query("table") == []
+
+
+def test_query_raises_on_http_error(client, mocker):
+    mock_response = MagicMock()
+    mock_response.raise_for_status.side_effect = Exception("404")
+    mocker.patch("src.dataverse_client.rest_client.requests.get", return_value=mock_response)
+    with pytest.raises(Exception, match="404"):
+        client.query("table")
+
+
+def test_query_passes_params_in_url(client, mocker):
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"value": []}
+    mock_get = mocker.patch(
+        "src.dataverse_client.rest_client.requests.get", return_value=mock_response
+    )
+    client.query("table", filter="col eq 'x'", top=5, select=["col"])
+    called_url = mock_get.call_args[0][0]
+    assert "$filter=col eq 'x'" in called_url
+    assert "$top=5" in called_url
+    assert "$select=col" in called_url
+
+
+# --- logging ---
+
+
+@pytest.mark.parametrize(
+    "method, operation, call_fn",
+    [
+        pytest.param(
+            "src.dataverse_client.rest_client.requests.get",
+            "GET",
+            lambda c: c.get_entry("table", "id"),
+            id="get_entry",
+        ),
+        pytest.param(
+            "src.dataverse_client.rest_client.requests.post",
+            "POST",
+            lambda c: c.add_entry("table", {"k": "v"}),
+            id="add_entry",
+        ),
+        pytest.param(
+            "src.dataverse_client.rest_client.requests.patch",
+            "PATCH",
+            lambda c: c.update_entry("table", "id", {"k": "v"}),
+            id="update_entry",
+        ),
+        pytest.param(
+            "src.dataverse_client.rest_client.requests.get",
+            "GET",
+            lambda c: c.query("table"),
+            id="query",
+        ),
+    ],
+)
+def test_debug_log_on_request(client, mocker, caplog, method, operation, call_fn):
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"value": []}
+    mocker.patch(method, return_value=mock_response)
+    with caplog.at_level(logging.DEBUG, logger="dataverse_client.rest_client"):
+        call_fn(client)
+    assert any(
+        f"Dataverse {operation}:" in r.message and "status code:" in r.message
+        for r in caplog.records
+    )
