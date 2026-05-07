@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 import subprocess
 from typing import Optional
@@ -14,12 +15,20 @@ simple_types = {
     "String": str,
     "Memo": str,
     "DateTime": datetime,
-    "Decimal": float,
+    "Decimal": Decimal,
     "Integer": int,
     "Double": float,
     "BigInt": int,
-    # "Virtual": str,  # virtuals aren't actual columns, they're calculated
+    "Money": Decimal,
+    "Owner": str,  # A special type of lookup
+    "State": int,
+    "Status": int,
 }
+## Handle these specially later
+# "Uniqueidentifier": str,  # The primary key type
+# "Picklist": int,  # Choice columns return the integer value
+# "Lookup": str,  # Returns the GUID string
+# "Virtual": str,  # virtuals aren't actual columns, they're calculated
 
 
 ### Models to parametrize our code generation
@@ -156,6 +165,7 @@ def make_model_from_table_metadata(table_metadata: TableMetadata) -> ModelModel:
             # Ignore redundant legacy virtual fields that accompany picklists
             pass
         else:
+            # Print instead of raise so
             print(f"Unfamiliar attribute type {col.AttributeType} for column {col.LogicalName}")
 
     # Remove redundant legacy "shadow" fields that accompany lookups
