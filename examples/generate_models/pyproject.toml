@@ -1,8 +1,12 @@
 [project]
 name = "generate-models"
 version = "0.1.0"
-description = "Add your description here"
+description = "Generates Pydantic models for Dataverse tables"
 readme = "README.md"
+authors = [
+  { name="Patrick Latimer", email="patrick.latimer@alleninstitute.org" },
+  { name="Allen Institute" }
+]
 requires-python = ">=3.10"
 dependencies = [
     "dataverse-client",
@@ -17,6 +21,12 @@ dataverse-client = { path = "../.." }
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-cov",
+]
+
 
 # Tell Hatchling to include the root directory instead of src/
 [tool.hatch.build.targets.wheel]
@@ -24,3 +34,6 @@ packages = ["."]
 
 [project.scripts]
 generate-models = "generate_table_models:main_generate_models"
+
+[tool.pytest.ini_options]
+addopts = "--cov"

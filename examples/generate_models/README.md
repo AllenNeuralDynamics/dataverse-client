@@ -9,6 +9,9 @@ Small utility to read dataverse table definitions and generate pydantic models t
 
 4. `tables.json` and `models.py` will be created.
 
+> [!NOTE]
+> Run unit test with `uv run pytest`
+
 The models are generated with the help of the `models.py.jinja2` template, and can capture the formatted values of lookup/picklist fields. They look something like this:
 
 
