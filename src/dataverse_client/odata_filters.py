@@ -77,7 +77,7 @@ Additional Functions Table:
 """
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 
 class Column(str):
@@ -168,6 +168,18 @@ def format_queries(
             expand = [expand]
         queries.append(f"$expand={','.join(expand)}")
     return "?" + "&".join(queries) if len(queries) else ""
+
+
+def order_by(column: str, direction: Literal["asc", "desc"] = "asc") -> str:
+    """OrderBy can be either ascending or descending,
+    This is denoted by " asc" or " desc" after the column name.
+
+    >>> order_by("Name")
+    'Name asc'
+    >>> order_by("Name", "desc")
+    'Name desc'
+    """
+    return f"{column} {direction}"
 
 
 # Comparison Operators
