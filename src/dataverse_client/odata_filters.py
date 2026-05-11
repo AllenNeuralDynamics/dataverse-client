@@ -129,6 +129,7 @@ def format_queries(
 ) -> str:
     """
     Format query parameters for a Dataverse API request.
+    OData "search" and "skip" are not supported by dataverse.
 
     Args:
         filter: OData filter query. Defaults to None
@@ -145,8 +146,11 @@ def format_queries(
         >>> format_queries(filter="Price gt 20", order_by="Name", top=5, select=["Name", "Price"])
         '?$filter=Price gt 20&$orderby=Name&$top=5&$select=Name,Price'
 
-        >>> format_queries(filter=equal("Price", 20), order_by="Name", top=5, select=["Name", "Price"])
-        '?$filter=Price eq 20&$orderby=Name&$top=5&$select=Name,Price'
+        >>> format_queries(filter=equal("Price", 20), order_by=["Name", "Age asc"], top=5, select=["Name", "Price"])
+        '?$filter=Price eq 20&$orderby=Name,Age asc&$top=5&$select=Name,Price'
+
+        >>> format_queries(order_by=order_by("Name", "desc"))
+        '?$orderby=Name desc'
     """
     queries = []
     if filter:
@@ -470,50 +474,3 @@ isof2 = Filter("isof({}, {})")
 geo_distance = Filter("geo.distance({}, {})")
 geo_length = Filter("geo.length({})")
 geo_intersects = Filter("geo.intersects({}, {})")
-
-
-########## Other query options
-
-# ?$count=true&$top=5
-
-
-def order_by(*columns: str) -> str:
-    """Order results by one or more columns.
-
-    >>> order_by('Name', 'Age')
-    'orderby=Name,Age'
-    """
-    return "orderby=" + ",".join(columns)
-
-
-def top(x: int) -> str:
-    """Limit results to the top x records.
-
-    >>> top(5)
-    'top=5'
-    """
-    return f"top={x}"
-
-
-def count(x: bool) -> str:
-    """Include a count of matching records.
-
-    >>> count(True)
-    'count=True'
-    """
-    return f"count={x}"
-
-
-def select(*columns: str) -> str:
-    """Select specific columns to return.
-
-    >>> select('Name', 'Age')
-    'select=Name,Age'
-    """
-    return "select=" + ",".join(columns)
-
-
-### Other odata queries not supported by dataverse:
-
-# search
-# skip
