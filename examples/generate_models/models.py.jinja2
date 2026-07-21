@@ -1,0 +1,30 @@
+from datetime import datetime
+from typing import Any, ClassVar, Optional
+
+from pydantic import BaseModel, Field
+
+{% for table, model in models.items() %}
+class {{ model.name }}({{ model.parent_class }}):
+    {% if model.docstring %}
+    """{{ model.docstring }}"""
+    {% endif %}
+
+    {% for attr in model.attributes -%}
+    {{ attr.to_code() }}
+    {% endfor %}
+
+{% endfor %}
+
+
+TABLE_MODEL_MAP: dict[str, type[BaseModel]] = {
+    {% for table, model in models.items() %}
+    "{{ table }}": {{ model.name }},
+    {% endfor %}
+}
+
+__all__ = [
+    "TABLE_MODEL_MAP",
+    {% for table, model in models.items() %}
+    "{{ model.name }}",
+    {% endfor %}
+]
