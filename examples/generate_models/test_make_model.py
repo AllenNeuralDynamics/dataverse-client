@@ -1,9 +1,9 @@
 """Unit tests for make_model_from_table_metadata"""
 
 import pytest
+from generate_table_models import ModelModel, make_model_from_table_metadata
 
 from dataverse_client.rest_client import ColumnMetadata, TableMetadata
-from generate_table_models import ModelModel, make_model_from_table_metadata
 
 
 def col(name: str, atype: str, idx: int = 0) -> ColumnMetadata:

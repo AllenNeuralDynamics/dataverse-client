@@ -19,6 +19,8 @@ def mock_config():
     config.username = "user"
     config.password = MagicMock()
     config.password.get_secret_value.return_value = "pass"
+    config.client_secret = None
+    config.use_msal = True
     config.scope = "scope"
     config.api_url = "https://api/"
     config.request_timeout_s = 60
@@ -55,7 +57,7 @@ def client(mock_config, mocker, table_raw):
     mock_app = MagicMock()
     mock_app.acquire_token_by_username_password.return_value = MOCK_TOKEN
     mocker.patch(
-        "src.dataverse_client.rest_client.msal.PublicClientApplication", return_value=mock_app
+        "src.dataverse_client.auth_utils.msal.PublicClientApplication", return_value=mock_app
     )
     client = DataverseRestClient(mock_config)
     mocker.patch.object(client, "query", return_value=table_raw)

@@ -5,7 +5,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dataverse_client import DataverseConfig, DataverseRestClient
+from dataverse_client import (
+    ClientSecretTokenHandler,
+    DataverseConfig,
+    DataverseRestClient,
+    TokenHandlerNoMsal,
+    UserPasswordTokenHandler,
+    get_token_handler,
+)
 
 MOCK_TOKEN = {"access_token": "fake-token"}
 
@@ -18,7 +25,26 @@ def mock_config():
     config.username = "user"
     config.password = MagicMock()
     config.password.get_secret_value.return_value = "pass"
+    config.client_secret = None
+    config.use_msal = True
     config.scope = "scope"
+    config.api_url = "https://api/"
+    config.request_timeout_s = 60
+    return config
+
+
+@pytest.fixture
+def app_config():
+    """Config for the client credentials (app-only) flow."""
+    config = MagicMock(spec=DataverseConfig)
+    config.client_id = "client_id"
+    config.authority = "authority"
+    config.username = None
+    config.password = None
+    config.client_secret = MagicMock()
+    config.client_secret.get_secret_value.return_value = "secret"
+    config.use_msal = True
+    config.client_credentials_scope = "https://org.crm.dynamics.com/.default"
     config.api_url = "https://api/"
     config.request_timeout_s = 60
     return config
@@ -29,9 +55,20 @@ def client(mock_config, mocker):
     mock_app = MagicMock()
     mock_app.acquire_token_by_username_password.return_value = MOCK_TOKEN
     mocker.patch(
-        "src.dataverse_client.rest_client.msal.PublicClientApplication", return_value=mock_app
+        "src.dataverse_client.auth_utils.msal.PublicClientApplication", return_value=mock_app
     )
     return DataverseRestClient(mock_config)
+
+
+@pytest.fixture
+def app_client(app_config, mocker):
+    mock_app = MagicMock()
+    mock_app.acquire_token_for_client.return_value = MOCK_TOKEN
+    mocker.patch(
+        "src.dataverse_client.auth_utils.msal.ConfidentialClientApplication",
+        return_value=mock_app,
+    )
+    return DataverseRestClient(app_config)
 
 
 @pytest.fixture
@@ -40,7 +77,7 @@ def failed_auth_client(mock_config, mocker):
     mock_app.acquire_token_by_username_password.return_value = {}
     mock_app.get_accounts.return_value = []
     mocker.patch(
-        "src.dataverse_client.rest_client.msal.PublicClientApplication", return_value=mock_app
+        "src.dataverse_client.auth_utils.msal.PublicClientApplication", return_value=mock_app
     )
     return DataverseRestClient(mock_config)
 
@@ -135,6 +172,124 @@ def test_acquire_token_failure(failed_auth_client):
 
 def test_connection_failure(failed_auth_client):
     assert not failed_auth_client.connected
+
+
+def test_client_credentials_uses_confidential_app(app_config, mocker):
+    mock_confidential = mocker.patch(
+        "src.dataverse_client.auth_utils.msal.ConfidentialClientApplication"
+    )
+    DataverseRestClient(app_config)
+    mock_confidential.assert_called_once_with(
+        client_id="client_id",
+        authority="authority",
+        client_credential="secret",
+    )
+
+
+def test_acquire_token_client_credentials_success(app_client):
+    assert app_client.connected
+    assert MOCK_TOKEN["access_token"] in app_client.headers["Authorization"]
+    app_client._token_handler._msal_app.acquire_token_for_client.assert_called_with(
+        scopes=["https://org.crm.dynamics.com/.default"]
+    )
+
+
+def test_acquire_token_client_credentials_failure(app_config, mocker):
+    mock_app = MagicMock()
+    mock_app.acquire_token_for_client.return_value = {
+        "error": "invalid_client",
+        "error_description": "bad secret",
+    }
+    mocker.patch(
+        "src.dataverse_client.auth_utils.msal.ConfidentialClientApplication",
+        return_value=mock_app,
+    )
+    failed_client = DataverseRestClient(app_config)
+    assert not failed_client.connected
+    with pytest.raises(ValueError, match="invalid_client"):
+        _ = failed_client.headers
+
+
+def test_no_credentials_raises(app_config, mocker):
+    mocker.patch("src.dataverse_client.auth_utils.msal.PublicClientApplication")
+    app_config.client_secret = None
+    app_config.username = None
+    app_config.password = None
+    with pytest.raises(ValueError, match="No credentials configured"):
+        DataverseRestClient(app_config)
+
+
+# --- TokenHandlerNoMsal ---
+
+
+def test_factory_selects_handlers(mock_config, app_config, mocker):
+    mocker.patch("src.dataverse_client.auth_utils.msal.PublicClientApplication")
+    mocker.patch("src.dataverse_client.auth_utils.msal.ConfidentialClientApplication")
+    assert isinstance(get_token_handler(mock_config), UserPasswordTokenHandler)
+    assert isinstance(get_token_handler(app_config), ClientSecretTokenHandler)
+    assert isinstance(get_token_handler(app_config, use_msal=False), TokenHandlerNoMsal)
+
+
+def test_factory_config_use_msal_false(app_config):
+    app_config.use_msal = False
+    assert isinstance(get_token_handler(app_config), TokenHandlerNoMsal)
+
+
+def test_factory_no_msal_requires_client_secret(mock_config):
+    mock_config.use_msal = False
+    with pytest.raises(ValueError, match="only supported via MSAL"):
+        get_token_handler(mock_config)
+
+
+def test_no_msal_handler_acquires_and_caches_token(app_config, mocker):
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"access_token": "fake-token", "expires_in": 3600}
+    mock_post = mocker.patch(
+        "src.dataverse_client.auth_utils.requests.post", return_value=mock_response
+    )
+    handler = TokenHandlerNoMsal(app_config)
+    assert handler.connected
+    assert handler.access_token == "fake-token"
+    assert mock_post.call_count == 1  # token is cached, not re-requested
+    assert mock_post.call_args[0][0] == "authority/oauth2/v2.0/token"
+    payload = mock_post.call_args.kwargs["data"]
+    assert payload["grant_type"] == "client_credentials"
+    assert payload["client_secret"] == "secret"
+    assert payload["scope"] == "https://org.crm.dynamics.com/.default"
+
+
+def test_no_msal_handler_refreshes_expired_token(app_config, mocker):
+    mock_response = MagicMock()
+    mock_response.json.side_effect = [
+        {"access_token": "token-1", "expires_in": 0},  # expires immediately
+        {"access_token": "token-2", "expires_in": 3600},
+    ]
+    mock_post = mocker.patch(
+        "src.dataverse_client.auth_utils.requests.post", return_value=mock_response
+    )
+    handler = TokenHandlerNoMsal(app_config)
+    assert handler.access_token == "token-1"
+    assert handler.access_token == "token-2"
+    assert mock_post.call_count == 2
+
+
+def test_no_msal_handler_failure(app_config, mocker):
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "error": "invalid_client",
+        "error_description": "bad secret",
+    }
+    mocker.patch("src.dataverse_client.auth_utils.requests.post", return_value=mock_response)
+    handler = TokenHandlerNoMsal(app_config)
+    assert not handler.connected
+    with pytest.raises(ValueError, match="invalid_client"):
+        _ = handler.access_token
+
+
+def test_no_msal_handler_requires_client_secret(app_config):
+    app_config.client_secret = None
+    with pytest.raises(ValueError, match="client_secret"):
+        TokenHandlerNoMsal(app_config)
 
 
 # --- CRUD ---
