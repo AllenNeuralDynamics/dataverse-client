@@ -1,11 +1,10 @@
+import subprocess
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
-import subprocess
-from typing import Optional
 
-from pydantic import BaseModel
 import jinja2
+from pydantic import BaseModel
 
 from dataverse_client import DataverseConfig, DataverseRestClient, TableMetadata
 
@@ -37,7 +36,7 @@ class AttributeModel(BaseModel):
 
     name: str
     type_hint: str
-    value: Optional[str] = None
+    value: str | None = None
 
     def to_code(self):
         if self.value is None:
@@ -51,7 +50,7 @@ class ModelModel(BaseModel):
 
     name: str
     parent_class: str = "BaseModel"
-    docstring: Optional[str] = None
+    docstring: str | None = None
     attributes: list[AttributeModel] = []
 
 
@@ -172,7 +171,7 @@ def make_model_from_table_metadata(table_metadata: TableMetadata) -> ModelModel:
     for field in lookup_fields:
         shadow_field = f"{field}name"
         try:
-            idx = [i for i, attr in enumerate(model.attributes) if attr.name == shadow_field][0]
+            idx = next(i for i, attr in enumerate(model.attributes) if attr.name == shadow_field)
             model.attributes.pop(idx)
         except IndexError:
             pass

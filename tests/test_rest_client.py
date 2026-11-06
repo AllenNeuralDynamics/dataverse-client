@@ -6,9 +6,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from dataverse_client import (
+    ClientSecretTokenHandler,
     DataverseConfig,
     DataverseRestClient,
-    ClientSecretTokenHandler,
     TokenHandlerNoMsal,
     UserPasswordTokenHandler,
     get_token_handler,

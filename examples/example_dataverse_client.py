@@ -6,6 +6,7 @@ from random import randint
 from dataverse_client import DataverseConfig, DataverseRestClient
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def example_using_dataverse_client():
@@ -19,15 +20,15 @@ def example_using_dataverse_client():
     # Add mouse (fails if mouse already exists)
     try:
         mouse = client.add_entry(mouse_table, {"aibs_mouse_id": "614174"})
-        print(mouse)
-    except Exception as e:
-        print(f"Failed to add mouse: {e}")
+        logger.info(mouse)
+    except Exception:
+        logger.exception("Failed to add mouse")
     mouse_id = "614174"
     mouse = client.get_entry(mouse_table, {"aibs_mouse_id": mouse_id})
-    print(mouse)
+    logger.info(mouse)
     mouse_guid = mouse["aibs_dim_miceid"]
     mouse = client.get_entry(mouse_table, mouse_guid)
-    print(mouse)
+    logger.info(mouse)
 
     mice = client.query(
         mouse_table,
@@ -36,16 +37,16 @@ def example_using_dataverse_client():
         top=5,
         select=["aibs_mouse_id", "aibs_date_of_birth"],
     )
-    print(mice)
+    logger.info(mice)
 
     updated_mouse = client.update_entry(
         mouse_table,
         {"aibs_mouse_id": mouse_id},
         {"aibs_genotype": "UpdatedGenotype_" + str(randint(1, 100))},
     )
-    print(updated_mouse)
+    logger.info(updated_mouse)
 
 
 if __name__ == "__main__":
-    print("Loading configuration from " + str(DataverseConfig.model_config["yaml_file"]))
+    logger.info("Loading configuration from " + str(DataverseConfig.model_config["yaml_file"]))
     example_using_dataverse_client()

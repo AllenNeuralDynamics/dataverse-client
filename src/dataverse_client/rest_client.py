@@ -152,8 +152,8 @@ class DataverseRestClient:
         elif isinstance(entry_id, str):
             identifier = f"({entry_id})"
         elif isinstance(entry_id, dict):  # Can query by alternate key
-            key = list(entry_id.keys())[0]
-            value = list(entry_id.values())[0]
+            key = next(iter(entry_id.keys()))
+            value = next(iter(entry_id.values()))
             if isinstance(value, str):
                 # strings in url query must be formatted with single quotes
                 value = f"'{value}'"
