@@ -1,104 +1,16 @@
 """Client for interacting with the Dataverse API"""
 
+import json
 import logging
 from pathlib import Path
-from typing import Optional
-import json
 
-import msal
-from platformdirs import site_data_dir
-from pydantic import BaseModel, SecretStr, computed_field
-from pydantic_settings import (
-    BaseSettings,
-    PydanticBaseSettingsSource,
-    YamlConfigSettingsSource,
-)
 import requests
+from pydantic import BaseModel
+
+from .auth_utils import get_token_handler
+from .config import DataverseConfig
 
 logger = logging.getLogger(__name__)
-
-data_directory = Path(
-    site_data_dir(
-        "dataverse_client",
-        "AllenInstitute",
-    )
-)
-
-
-class DataverseConfig(
-    BaseSettings,
-    validate_default=True,
-    extra="ignore",
-    env_prefix="DATAVERSE_",
-    yaml_file=data_directory / "config.yml",
-):
-    """
-    Configuration settings for the Dataverse client.
-    Loads from environment variables prefixed with "DATAVERSE_"
-    """
-
-    tenant_id: str
-    client_id: str
-    org: str
-
-    additional_scopes: list[str] = ["offline_access"]
-
-    username: str
-    password: SecretStr
-
-    domain: str = "alleninstitute.org"
-
-    request_timeout_s: float = 60
-
-    @computed_field
-    @property
-    def username_at_domain(self) -> str:
-        """Username with domain for authentication."""
-        if self.username.endswith(f"@{self.domain}"):
-            return self.username
-        return self.username + "@" + self.domain
-
-    @computed_field
-    @property
-    def api_url(self) -> str:
-        """Base URL for the Dataverse API."""
-        return f"https://{self.org}.crm.dynamics.com/api/data/v9.2/"
-
-    @computed_field
-    @property
-    def env_url(self) -> str:
-        """Base URL for the Dataverse environment."""
-        return f"https://{self.org}.crm.dynamics.com"
-
-    @computed_field
-    @property
-    def authority(self) -> str:
-        """Base URL for the Azure AD authority."""
-        return f"https://login.microsoftonline.com/{self.tenant_id}"
-
-    @computed_field
-    @property
-    def scope(self) -> str:
-        """Scope for the Dataverse API."""
-        return f"{self.env_url}/.default " + " ".join(self.additional_scopes)
-
-    @classmethod
-    def settings_customise_sources(
-        cls,
-        settings_cls: type[BaseSettings],
-        init_settings: PydanticBaseSettingsSource,
-        env_settings: PydanticBaseSettingsSource,
-        dotenv_settings: PydanticBaseSettingsSource,
-        file_secret_settings: PydanticBaseSettingsSource,
-    ) -> tuple[PydanticBaseSettingsSource, ...]:
-        """Specify order of settings sources (yaml file, env vars, etc)"""
-        return (
-            init_settings,
-            env_settings,
-            dotenv_settings,
-            file_secret_settings,
-            YamlConfigSettingsSource(settings_cls),
-        )
 
 
 #### Simple models for database table metadata
@@ -113,7 +25,7 @@ class ColumnMetadata(BaseModel):
 class TableMetadata(BaseModel):
     SchemaName: str
     LogicalCollectionName: str
-    Attributes: Optional[list[ColumnMetadata]] = None
+    Attributes: list[ColumnMetadata] | None = None
 
 
 ####
@@ -126,24 +38,19 @@ class DataverseRestClient:
         """
         Initialize the DataverseRestClient with configuration.
 
+        Uses the client credentials (app-only) flow when a client_secret is
+        configured, otherwise the username/password (delegated user) flow.
+
         Args:
             config: Config object with credentials and URLs
         """
         self.config = config
-        self._msal_app = msal.PublicClientApplication(
-            client_id=self.config.client_id,
-            authority=self.config.authority,
-            client_credential=None,
-        )
+        self._token_handler = get_token_handler(config)
 
     @property
     def connected(self) -> bool:
         """Check if the client can acquire an access token."""
-        try:
-            _ = self._get_access_token()
-            return True
-        except ValueError:
-            return False
+        return self._token_handler.connected
 
     @property
     def headers(self) -> dict:
@@ -168,36 +75,16 @@ class DataverseRestClient:
         Raises:
             ValueError: If token acquisition fails
         """
-        accounts = self._msal_app.get_accounts(username=self.config.username_at_domain)
-
-        if accounts:
-            result = self._msal_app.acquire_token_silent(
-                scopes=[self.config.scope], account=accounts[0]
-            )
-            if result and "access_token" in result:
-                return result["access_token"]
-
-        result = self._msal_app.acquire_token_by_username_password(
-            username=self.config.username_at_domain,
-            password=self.config.password.get_secret_value(),
-            scopes=[self.config.scope],
-        )
-
-        if "access_token" in result:
-            return result["access_token"]
-        else:
-            raise ValueError(
-                f"Error acquiring token: {result.get('error')} : {result.get('error_description')}"
-            )
+        return self._token_handler.access_token
 
     @staticmethod
     def _format_queries(
-        filter: Optional[str] = None,
-        order_by: Optional[str | list[str]] = None,
-        top: Optional[int] = None,
-        count: Optional[bool] = None,
-        select: Optional[str | list[str]] = None,
-        expand: Optional[str | list[str]] = None,
+        filter: str | None = None,
+        order_by: str | list[str] | None = None,
+        top: int | None = None,
+        count: bool | None = None,
+        select: str | list[str] | None = None,
+        expand: str | list[str] | None = None,
     ) -> str:
         """
         Format query parameters for a Dataverse API request.
@@ -237,13 +124,13 @@ class DataverseRestClient:
     def _construct_url(
         self,
         table: str,
-        entry_id: Optional[str | dict] = None,
-        filter: Optional[str] = None,
-        order_by: Optional[str | list[str]] = None,
-        top: Optional[int] = None,
-        count: Optional[bool] = None,
-        select: Optional[str | list[str]] = None,
-        expand: Optional[str | list[str]] = None,
+        entry_id: str | dict | None = None,
+        filter: str | None = None,
+        order_by: str | list[str] | None = None,
+        top: int | None = None,
+        count: bool | None = None,
+        select: str | list[str] | None = None,
+        expand: str | list[str] | None = None,
     ) -> str:
         """
         Construct the URL for a Dataverse table entry.
@@ -310,7 +197,7 @@ class DataverseRestClient:
         response.raise_for_status()
         return response.json()
 
-    def add_entry(self, table: str, data: dict) -> Optional[dict]:
+    def add_entry(self, table: str, data: dict) -> dict | None:
         """
         Add a new entry to a Dataverse table.
 
@@ -373,11 +260,11 @@ class DataverseRestClient:
     def query(
         self,
         table: str,
-        filter: Optional[str] = None,
-        order_by: Optional[str] = None,
-        top: Optional[int] = None,
-        select: Optional[list[str]] = None,
-        expand: Optional[str | list[str]] = None,
+        filter: str | None = None,
+        order_by: str | None = None,
+        top: int | None = None,
+        select: list[str] | None = None,
+        expand: str | list[str] | None = None,
     ) -> list[dict]:
         """
         Query a Dataverse table for multiple entries based on filters.
@@ -464,7 +351,7 @@ class DataverseRestClient:
         self,
         table_filter_prefix: str = "",
         column_filter_prefix: str = "",
-        output_file: Optional[Path] = None,
+        output_file: Path | None = None,
     ) -> list[TableMetadata]:
         """Get table metadata for all tables, optionally filtering table logical name by prefix.
         Microsoft doesn't let you filter metadata by "starts_with(...)" so we have to filter on our own.

@@ -1,16 +1,17 @@
 """Unit tests for DataverseConfig computed fields"""
 
 import pytest
+from pydantic import ValidationError
 
 from dataverse_client import DataverseConfig
 
-BASE_ARGS = dict(
-    tenant_id="tenant-123",
-    client_id="client-456",
-    org="myorg",
-    username="jdoe",
-    password="secret",
-)
+BASE_ARGS = {
+    "tenant_id": "tenant-123",
+    "client_id": "client-456",
+    "org": "myorg",
+    "username": "jdoe",
+    "password": "secret",
+}
 
 
 @pytest.fixture
@@ -32,6 +33,10 @@ def test_authority(config):
 
 def test_scope_default(config):
     assert config.scope == "https://myorg.crm.dynamics.com/.default offline_access"
+
+
+def test_use_msal_defaults_true(config):
+    assert config.use_msal is True
 
 
 def test_scope_additional_scopes():
@@ -57,3 +62,44 @@ def test_username_at_domain(username, expected):
 def test_username_at_domain_custom_domain():
     cfg = DataverseConfig(**BASE_ARGS, domain="custom.org")
     assert cfg.username_at_domain == "jdoe@custom.org"
+
+
+def test_client_credentials_scope(config):
+    assert config.client_credentials_scope == "https://myorg.crm.dynamics.com/.default"
+
+
+def test_client_secret_only():
+    cfg = DataverseConfig(
+        tenant_id="tenant-123",
+        client_id="client-456",
+        org="myorg",
+        username=None,
+        password=None,
+        client_secret="shhh",
+    )
+    assert cfg.client_secret.get_secret_value() == "shhh"
+    assert cfg.username_at_domain is None
+
+
+def test_missing_credentials_raises():
+    with pytest.raises(ValidationError, match="username and password, or client_secret"):
+        DataverseConfig(
+            tenant_id="tenant-123",
+            client_id="client-456",
+            org="myorg",
+            username=None,
+            password=None,
+            client_secret=None,
+        )
+
+
+def test_username_without_password_raises():
+    with pytest.raises(ValidationError, match="username and password, or client_secret"):
+        DataverseConfig(
+            tenant_id="tenant-123",
+            client_id="client-456",
+            org="myorg",
+            username="jdoe",
+            password=None,
+            client_secret=None,
+        )

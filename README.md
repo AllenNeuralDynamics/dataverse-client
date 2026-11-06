@@ -19,7 +19,7 @@ To install a specific version, append `@{version}` with a tag name. For example 
 
 ## Configuration
 
-Configuration is automatically loaded from `C:\ProgramData\AllenInstitute\dataverse_client\config.yml`. The configuration options and their defaults are listed in the `DataverseConfig` object in [rest_client.py](src/dataverse_client/rest_client.py). The file should look like this:
+Configuration is automatically loaded from `C:\ProgramData\AllenInstitute\dataverse_client\config.yml`. The configuration options and their defaults are listed in the `DataverseConfig` object in [config.py](src/dataverse_client/config.py). The file should look like this:
 
 ```yaml
 tenant_id: "**********"
@@ -33,6 +33,13 @@ request_timeout_s: 60
 
 To set the password to be used alongside the username for authentication, set an environment variable:
 - `set DATAVERSE_password=<password>`
+
+Alternatively, you can authenticate as an application (client credentials flow) with a client secret instead of a username/password. Omit `username` from the config and set:
+- `set DATAVERSE_client_secret=<client secret>`
+
+If a `client_secret` is configured, it takes precedence and the client authenticates app-only; otherwise the username/password flow is used. The Azure AD app registration must have a client secret and application permissions for Dataverse, and the application user must be granted a security role in the Dataverse environment.
+
+By default tokens are acquired via MSAL. Set `use_msal: false` (or `DATAVERSE_use_msal=false`) to instead call the Azure AD token endpoint directly for the client-credentials flow (username/password requires MSAL).
 
 Environment variables prefixed with `DATAVERSE_` can also be used to set the other configuration options, e.g. `DATAVERSE_tenant_id`.
 
